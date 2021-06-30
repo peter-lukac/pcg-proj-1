@@ -1,0 +1,108 @@
+
+Paralelní programování na GPU (PCG 2020)
+Projekt c. 1 (cuda)
+Login: xlukac11
+
+
+
+
+Krok 0: základní implementace
+=============================
+Velikost dat    	    čas [s]
+                      step0
+     1024             3.657230 s
+ 2 * 1024             7.273598 s
+ 3 * 1024             10.911314 s
+ 4 * 1024             14.502475 s
+  ...				  ...
+  ...         ...
+10 * 1024             36.226576 s
+11 * 1024             39.799672 s
+  ...				  ...
+  ...				  ...
+20 * 1024             142.608157 s
+21 * 1024             149.962366 s
+  ...				  ...
+  ...				  ...
+30 * 1024             318.635196 s
+
+Vyskytla se nějaká anomálie v datech
+Pokud ano, vysvětlete:
+
+
+Krok 1: optimalizace kódu
+=====================
+Došlo ke zrychlení?
+
+Áno:
+                      step0             step1
+     1024             3.657230 s        1.403819 s
+ 2 * 1024             7.273598 s        2.798050 s
+ 3 * 1024             10.911314 s       4.189196 s
+ 4 * 1024             14.502475 s       5.595943 s
+  ...                 ...               ...
+20 * 1024             142.608157 s      55.006030 s
+
+Popište dva hlavní důvody:
+
+1. Zlúčením do jedného kernelu a odstránením temp_vel z globálnej pamäte sa znížil počet prístupov do globálnej pammäte
+   takmer 3-krát, 10.35M -> 3.67M, čo zvyšilo FLOP Efficiency.
+2. Odpadla nutnosť synchronizácie vlákien a znížil sa počet Floating Point operácií. Predtým dva kernely
+   vykonávali kód, ktorý bol z malej časti rovnaký. Navše bola použita verzia výpočtu s 10 operáciamy vs 22(podľa cpu verzie).
+
+Porovnejte metriky s předchozím krokem:
+
+                                                  step0           step1
+               FLOP Efficiency(Peak Single)   3.63% - 3.71%       5.03%
+                    Multiprocessor Activity   30.57% - 30.67%     30.73%
+                   Global Load Transactions      10.35M           3.67M
+Floating Point Operations(Single Precision)       3750M           3489M
+
+
+Krok 2: sdílená paměť
+=====================
+Došlo ke zrychlení?
+
+Áno:
+                    step1             step2
+     1024           1.403819 s        1.148354 s
+ 2 * 1024           2.798050 s        2.288049 s
+ 3 * 1024           4.189196 s        3.424877 s
+ 4 * 1024           5.595943 s        3.645044 s
+  ...               ...               ...
+20 * 1024           55.006030 s       36.528505 s
+
+Zdůvodněte:
+
+Zavedením zdieľanej pamäťe sa drasticky znížil počet prístupov do globálnej pamäťe 3.67M -> 33408. Takmer
+všetky prístupy sú do zdieľanej pamäťe ~3.67M. Keďže zdieľaná pamäť je oveľa rýchlejšia tak sa zvýši
+aritmetická intenzita a efektivita.
+
+
+Porovnejte metriky s předchozím krokem:
+
+                                                  step1           step2
+               FLOP Efficiency(Peak Single)       5.03%           7.06%
+                    Multiprocessor Activity       30.73%          30.72%
+                   Global Load Transactions       3.67M           33408
+Floating Point Operations(Single Precision)       3489M           1829M
+                   Shared Load Transactions         0             3.67M
+
+
+
+Krok 5: analýza výkonu
+======================                                                      (3.524 TFLOPS max)
+N            čas CPU [s]        čas GPU [s]    propustnost paměti [MB/s]      výkon [MFLOPS]        zrychlení [-]
+1024     29.2175 / 2.92175       0.961684            150.46                   60965 (1.73%)             3.04
+2048     116.984 / 11.6984       1.870933            402.45                   100786 (2.86%)            6.3
+4096     479.535 / 47.9535       3.692083            986.89                   252670 (7.17%)            13
+...      ...            ...            ...                          ...         
+131072   491043 / 49104          955.295035 s        3685.3                   (metric overflow)         51
+        (odhadnute podľa
+        kvadratickej zložitosti)
+
+Od jakého počtu částic se vyplatí počítat na grafické kartě?
+
+V našom prípade to bolo v celom rosahu dat.
+
+===================================
